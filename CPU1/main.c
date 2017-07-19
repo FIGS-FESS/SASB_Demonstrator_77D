@@ -136,11 +136,11 @@ float i1_target;    //*(Amps)
 
 //Current sensor conversion scale
     //*Make this a define
-float current_scale = 10.14158 * 3.3 / 4096;    //Conversion scale for current sensor *(Amps/Volt)
+float current_scale = 10.168070782 * 3.3 / 4096;    //Conversion scale for current sensor *(Amps/Volt)
 
 //Current sensor conversion offset      *Edited to zero
     //*Make this a define
-float current_offset = -13.39791564;   //Conversion offset for current sensor *(Amps)
+float current_offset = -13.45198481;   //Conversion offset for current sensor *(Amps)
 
 //Current Bias current for SASB floator
     //*Make this a define
