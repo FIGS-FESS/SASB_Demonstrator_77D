@@ -150,10 +150,10 @@ float current_offset = -13.45198481;   //Conversion offset for current sensor *(
 float current_bias = 2.2;   //Calculated from the desired gap and the force on the floator due to gravity
 
 //Maximum Current
-float current_max = 4;  //Max current for operation *(Amps)
+float current_max = 15;  //Max current for operation *(Amps)
 
 //Minimum Current
-float current_min = -4; //Min current for operation *(Amps)
+float current_min = -15; //Min current for operation *(Amps)
 
 //PID constants
 float   kp = .4,    //Default to 1.1 for Initial tuning
