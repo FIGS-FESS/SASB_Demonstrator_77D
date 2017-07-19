@@ -139,10 +139,10 @@ float current_max = 4;  //Max current for operation *(Amps)
 //Minimum Current
 float current_min = -4; //Min current for operation *(Amps)
 
-//Default PID constants
-float   kp = 1.1,
-        ki,
-        kd;
+//PID constants
+float   kp = .4,    //Default to 1.1 for Initial tuning
+        ki = .3,    //Default to 0 for initial tuning
+        kd = 15;    //Default to 0 for initial tuning
 
 //Current control variables
 float   i1_error,
