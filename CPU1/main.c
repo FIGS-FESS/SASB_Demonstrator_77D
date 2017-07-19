@@ -39,6 +39,18 @@ typedef struct position_sensor_struct{
     float prev[prev_size];  /*!< Array of previous values, used for calculating the Derivative and Integral terms */
 }position;
 
+/*! Current Sensor and Coil Control Structure */
+typedef struct current_coil_struct{
+    int *sample_loc;        /*!< Sample value pointer */
+    float sample;           /*!< Sample value, (*Amps) */
+    float target;           /*!< Target Displacement value, *(Amps) */
+    float error;            /*!< Error to determine more or less current, *(Amps)   **May change later for PWM and/or a PID loop */
+    float scale;            /*!< Scaling constant to convert sensor reading to current, *(Amps/Volt) */
+    float offset;           /*!< Offset constant to convert sensor reading to current, *(Amps) */
+    float x_influence;      /*!< X-axis influence of the coil */
+    float y_influence;      /*!< Y-axis influence of the coil */
+    float bias;              /*!< Individual bias current of the coil **May use in Gauss/De-Gauss process in the future */
+}current;
 
 /*
  * Function Prototypes
@@ -46,9 +58,10 @@ typedef struct position_sensor_struct{
     //*Note, at some point this should be moved to a header file
 
 void SetupPosition(position *sensor);
+void SetupCoil(current *coil);
 void Position_PID_Cntrl(position *sensor);
-void current_target(float bias,float *target,position *disp_sensor);
-void Bang_Bang_Cntrl();
+void current_target(current *coil,position *disp_sensor);
+void Bang_Bang_Cntrl(current *coil);
 void InitADCPart1();
 void InitADCPart2();
 void InitEPwm();
@@ -65,6 +78,9 @@ interrupt void epwm2_isr();
 
 //Definition of the X1 instance of the position sensor structure
 position X1;    //Variable used to store the PID math variables
+
+//Definition of the current coil structure
+current C1;     //Variable used to store the current control variables for coil 1
 
 //Acuasition time calibration
     //*Used for Debug
@@ -178,6 +194,10 @@ void main(void){
     SetupPosition(&X1);
     X1.sample_loc = &x1_sample;
 
+    //Setup C1 variable
+    SetupCoil(&C1);
+    C1.sample_loc = &i1_sample;
+
     //Disable interrupts? Followed the example of process from the control suite example code
     DINT;
 
@@ -245,8 +265,8 @@ void main(void){
             x1_update = 0 ;
             GpioDataRegs.GPBTOGGLE.bit.GPIO40 = 1;
             Position_PID_Cntrl(&X1);        //*OLD* Takes 1.0226 micro seconds
-            current_target(current_bias, &i1_target, &X1);      //Displacement to Current target
-            Bang_Bang_Cntrl();      //Current control function
+            current_target(&C1, &X1);      //Displacement to Current target
+            Bang_Bang_Cntrl(&C1);      //Current control function
             GpioDataRegs.GPBTOGGLE.bit.GPIO40 = 1;
 
         }
@@ -285,6 +305,18 @@ void SetupPosition(position *sensor){
     for(i=0;i<prev_size;i++){   
         sensor->prev[i]=0;      //Step by step through the PID memory array and zero it
     }
+}
+
+/*
+ * Setup function for coil structure
+ */
+
+void SetupCoil(current *coil){
+    coil->scale = current_scale;    //Sets the current conversion scale
+    coil->offset = current_offset;  //Sets the current conversion offset
+    coil->x_influence = 1;          //Sets the current x value scaling constant
+    coil->y_influence = 1;          //Sets the current y value scaling constant
+    coil->bias = current_bias;      //Sets the current bias point
 }
 
 /*
@@ -328,9 +360,10 @@ void Position_PID_Cntrl(position *sensor){
  * Current Target Function
  */
 
-void current_target(float bias,float *target,position *disp_sensor){
+void current_target(current *coil, position *disp_sensor){
     float temp;
-    temp = bias + (disp_sensor->pid_out * disp_to_current); //*(Amps)
+    /* In the next line is where the future addition of the X Y influence will be accounted for */
+    temp = coil->bias + (disp_sensor->pid_out * disp_to_current); //*(Amps)
     if(temp > current_max || temp < current_min){
         if(temp > current_max){
             temp = current_max;     //Limits the target current to the max value
@@ -339,24 +372,24 @@ void current_target(float bias,float *target,position *disp_sensor){
             temp = current_min;     //Limits the target current to the min value
         }
     }
-    *target = temp; //*(Amps)
+    coil->target = temp; //*(Amps)
 }
 
 /*
  * Current Control Function
  */
 
-void Bang_Bang_Cntrl(){
-    i1_current = (i1_sample * current_scale) + current_offset;  //*(Amps)
+void Bang_Bang_Cntrl(current *coil){
+    coil->sample = (*(coil->sample_loc) * coil->scale) + coil->offset;  //*(Amps)
 
     //Initial error calculation between target and sampled current
-    i1_error = i1_current - i1_target;
+    coil->error = coil->sample - coil->target;
 
     //Moves the error to the PID output variable, allows for future integration of a PID control for current to PWM
-    i1_pid_out = i1_error;
+    //i1_pid_out = i1_error;
 
     //Run P_H pin high or low depending on error
-    if(i1_error < 0){
+    if(coil->error < 0){
         GpioDataRegs.GPBSET.bit.GPIO39 = 1;     //Pin 88, This is Tied to the P_H pin for one of the Pololu's
     }
     else{
