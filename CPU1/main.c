@@ -30,8 +30,11 @@ typedef struct position_sensor_struct{
     float target;           /*!< Target Displacement value *(mm) */
     float error;            /*!< Error for PID controls *(mm) */
     float dt;               /*!< Time period for PID control *(ms) */
+    float kp;               /*!< Proportional Constant */
     float p;                /*!< Proportional calculated value */
+    float ki;               /*!< Integral Constant */
     float i;                /*!< Integral calculated value */
+    float kd;               /*!< Derivative Constant */
     float d;                /*!< Derivative calculated value */
     float pid_out;          /*!< Output of the PID control */
     int prev_place;         /*!< Current location in the array of previous values */
@@ -298,12 +301,15 @@ void main(void){
 
 void SetupPosition(position *sensor){
     int i;      //Used as a simple loop counter
-    sensor->target = x1_target;     //Feeds the position structure the location of sample global
-    sensor->dt = x1_dt;     //Feeds in the specific sample period for the sensor
-    sensor->prev_place = 0;     //Starts the PID progression at 0
-    sensor->prev_last = prev_size - 1;      //Starts the last pointer to the end of the array
+    sensor->target = x1_target;         //Feeds the position structure the location of sample global
+    sensor->dt = x1_dt;                 //Feeds in the specific sample period for the sensor
+    sensor->kp = kp;                    //Sets default proportional constant
+    sensor->ki = ki;                    //Sets default integral constant
+    sensor->kd = kd;                    //Sets default derivative constant
+    sensor->prev_place = 0;             //Starts the PID progression at 0
+    sensor->prev_last = prev_size - 1;  //Starts the last pointer to the end of the array
     for(i=0;i<prev_size;i++){   
-        sensor->prev[i]=0;      //Step by step through the PID memory array and zero it
+        sensor->prev[i]=0;              //Step by step through the PID memory array and zero it
     }
 }
 
@@ -336,14 +342,14 @@ void Position_PID_Cntrl(position *sensor){
     sensor->error = sensor->sample - sensor->target;
 
     //Proportional term calculation
-    sensor->p = sensor->error * kp;
+    sensor->p = sensor->error * sensor->kp;
 
     //Integral term calculation
         //This was fun to code, pretty much I subtract out the last value of the array at the same time I add in the new one!
-    sensor->i = sensor->i + ((sensor->error - sensor->prev[sensor->prev_place]) * sensor->dt * ki);
+    sensor->i = sensor->i + ((sensor->error - sensor->prev[sensor->prev_place]) * sensor->dt * sensor->ki);
 
     //Derivative term calculation
-    sensor->d = (sensor->error - sensor->prev[sensor->prev_last]) * kd / sensor->dt;    
+    sensor->d = (sensor->error - sensor->prev[sensor->prev_last]) * sensor->kd / sensor->dt;    
 
     //PID output
     sensor->pid_out = sensor->p + sensor->i + sensor->d;    //*(Meters?)
