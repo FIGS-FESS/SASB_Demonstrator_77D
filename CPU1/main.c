@@ -53,6 +53,7 @@ typedef struct current_coil_struct{
     float x_influence;      /*!< X-axis influence of the coil */
     float y_influence;      /*!< Y-axis influence of the coil */
     float bias;              /*!< Individual bias current of the coil **May use in Gauss/De-Gauss process in the future */
+    int gpio_offset;        /*!< Offset in the register to the correct GPIO pin */
 }current;
 
 /*
@@ -63,7 +64,7 @@ typedef struct current_coil_struct{
 void SetupPosition(position *sensor);
 void SetupCoil(current *coil);
 void Position_PID_Cntrl(position *sensor);
-void current_target(current *coil,position *disp_sensor);
+void current_target(current *coil,position *x_disp_sensor,position *y_disp_sensor);
 void Bang_Bang_Cntrl(current *coil);
 void InitADCPart1();
 void InitADCPart2();
@@ -80,10 +81,14 @@ interrupt void epwm2_isr();
  */
 
 //Definition of the X1 instance of the position sensor structure
-position X1;    //Variable used to store the PID math variables
+position X1;    //Variable used to store the PID math variables for the x axis displacement sensor
+position Y1;    //Variable used to store the PID math variables for the y axis displacement sensor
 
 //Definition of the current coil structure
 current C1;     //Variable used to store the current control variables for coil 1
+current C2;     //Variable used to store the current control variables for coil 2
+current C3;     //Variable used to store the current control variables for coil 3
+current C4;     //Variable used to store the current control variables for coil 4
 
 //Acuasition time calibration
     //*Used for Debug
@@ -125,14 +130,17 @@ float x1_dt = 0.1;   //*(MilliSeconds)
     //*Make this a define
 float disp_to_current = 2.2;  //Scales the PID output to current *(Meters/Amp)
 
-//Current sensor reading
-int i1_sample;  //Global for i1 current sensor reading *(Digitized)
+//Current sensors readings
+int c1_sample;  //Global for coil 1 current sensor reading *(Digitized)
+int c2_sample;  //Global for coil 2 current sensor reading *(Digitized)
+int c3_sample;  //Global for coil 3 current sensor reading *(Digitized)
+int c4_sample;  //Global for coil 4 current sensor reading *(Digitized)
 
 //Current sensor reading in current
 float i1_current;   //*(Amps)
 
 //Current sensor update flag
-int i1_update;  //Flag for new current sensor readings
+int c_update;  //Flag for new current sensor readings
 
 //Current target
 float i1_target;    //*(Amps)
@@ -150,10 +158,10 @@ float current_offset = -13.45198481;   //Conversion offset for current sensor *(
 float current_bias = 2.2;   //Calculated from the desired gap and the force on the floator due to gravity
 
 //Maximum Current
-float current_max = 4;  //Max current for operation *(Amps)
+float current_max = 10;  //Max current for operation *(Amps)
 
 //Minimum Current
-float current_min = -4; //Min current for operation *(Amps)
+float current_min = -10; //Min current for operation *(Amps)
 
 //PID constants
 float   kp = .4,    //Default to 1.1 for Initial tuning
@@ -181,16 +189,32 @@ void main(void){
 
     //Setup output pins
     EALLOW;
-    GpioCtrlRegs.GPBPUD.bit.GPIO40 = 0;    
-    GpioDataRegs.GPBSET.bit.GPIO40 = 1;
-    GpioCtrlRegs.GPBGMUX1.bit.GPIO40 = 0;
-    GpioCtrlRegs.GPBDIR.bit.GPIO40 = 1;
-    GpioDataRegs.GPBCLEAR.bit.GPIO40 = 1;
-    GpioCtrlRegs.GPBPUD.bit.GPIO39 = 0;
-    GpioDataRegs.GPBSET.bit.GPIO39 = 1;
-    GpioCtrlRegs.GPBGMUX1.bit.GPIO39 = 0;
-    GpioCtrlRegs.GPBDIR.bit.GPIO39 = 1;
-    GpioDataRegs.GPBCLEAR.bit.GPIO39 = 1;
+
+    //Pin 89, Used to clock how long the displacement if statement in the main loop takes
+    GpioCtrlRegs.GPBPUD.bit.GPIO40 = 0;     //Leaves pull up resistor on pin
+    GpioDataRegs.GPBSET.bit.GPIO40 = 1;     //Sets the pin high
+    GpioCtrlRegs.GPBGMUX1.bit.GPIO40 = 0;   //Sets the pins to default mux
+    GpioCtrlRegs.GPBDIR.bit.GPIO40 = 1;     //Sets the pin to output
+    GpioDataRegs.GPBCLEAR.bit.GPIO40 = 1;   //Sets the pin low
+
+    //PWM_H Pins
+        //Pin 86, PWM_H for C3
+    GpioCtrlRegs.GPBPUD.bit.GPIO39 = 0;     //Leaves the pull up resistor on the pin
+    GpioDataRegs.GPBSET.bit.GPIO39 = 1;     //Sets the pin high
+    GpioCtrlRegs.GPBGMUX1.bit.GPIO39 = 0;   //Sets the pin to default mux
+    GpioCtrlRegs.GPBDIR.bit.GPIO39 = 1;     //Sets the pin to output
+    GpioDataRegs.GPBCLEAR.bit.GPIO39 = 1;   //Sets the pin low
+        //Pin 88, PWM_H for C2
+    GpioCtrlRegs.GPBGMUX1.bit.GPIO34 = 0;   //Sets the pin to default mux
+    GpioCtrlRegs.GPBDIR.bit.GPIO34 = 1;     //Sets the pin to output
+    GpioDataRegs.GPBCLEAR.bit.GPIO34 = 1;   //Sets the pin to low
+        //Pin 90, PWM_H for C3
+    GpioCtrlRegs.GPBDIR.bit.GPIO44 = 1;     //Sets the pin to output
+    GpioDataRegs.GPBCLEAR.bit.GPIO44 = 1;   //Sets the pin to low
+        //Pin 92, PWM_H for C4
+    GpioCtrlRegs.GPBDIR.bit.GPIO45 = 1;     //Sets the pin to output
+    GpioDataRegs.GPBCLEAR.bit.GPIO45 = 1;   //Sets the pin to low
+
     EDIS;
 
     //Setup X1 variable
@@ -199,7 +223,28 @@ void main(void){
 
     //Setup C1 variable
     SetupCoil(&C1);
-    C1.sample_loc = &i1_sample;
+    SetupCoil(&C2);
+    SetupCoil(&C3);
+    SetupCoil(&C4);
+    
+    //Sets the location of the global for each sample
+    C1.sample_loc = &c1_sample;
+    C2.sample_loc = &c2_sample;
+    C3.sample_loc = &c3_sample;
+    C4.sample_loc = &c4_sample;
+    
+    //Displacement sensor influences for each coil
+    C1.x_influence = 1;
+    C2.x_influence = 1;
+    C3.x_influence = 1;
+    C4.x_influence = 1;
+
+    //GPIO offsets
+        //These are found by mapping between the physical pins and their GPIO address in the GPIO registers
+    C1.gpio_offset = 2;
+    C2.gpio_offset = 7;
+    C3.gpio_offset = 12;
+    C4.gpio_offset = 13;
 
     //Disable interrupts? Followed the example of process from the control suite example code
     DINT;
@@ -256,8 +301,8 @@ void main(void){
     for(;;){
 
         //Current control if statement
-        if(i1_update){
-            i1_update = 0;
+        if(c_update){
+            c_update = 0;
             //Bang_Bang_Cntrl();
 
         }
@@ -268,8 +313,14 @@ void main(void){
             x1_update = 0 ;
             GpioDataRegs.GPBTOGGLE.bit.GPIO40 = 1;
             Position_PID_Cntrl(&X1);        //*OLD* Takes 1.0226 micro seconds
-            current_target(&C1, &X1);      //Displacement to Current target
-            Bang_Bang_Cntrl(&C1);      //Current control function
+            current_target(&C1, &X1, &Y1);  //Displacement to Current target for coil 1
+            current_target(&C2, &X1, &Y1);  //Displacement to Current target for coil 2
+            current_target(&C3, &X1, &Y1);  //Displacement to Current target for coil 3
+            current_target(&C4, &X1, &Y1);  //Displacement to Current target for coil 4
+            Bang_Bang_Cntrl(&C1);   //Current control function for coil 1
+            Bang_Bang_Cntrl(&C2);   //Current control function for coil 2
+            Bang_Bang_Cntrl(&C3);   //Current control function for coil 3
+            Bang_Bang_Cntrl(&C4);   //Current control function for coil 4
             GpioDataRegs.GPBTOGGLE.bit.GPIO40 = 1;
 
         }
@@ -321,7 +372,7 @@ void SetupCoil(current *coil){
     coil->scale = current_scale;    //Sets the current conversion scale
     coil->offset = current_offset;  //Sets the current conversion offset
     coil->x_influence = 1;          //Sets the current x value scaling constant
-    coil->y_influence = 1;          //Sets the current y value scaling constant
+    coil->y_influence = 0;          //Sets the current y value scaling constant
     coil->bias = current_bias;      //Sets the current bias point
 }
 
@@ -366,10 +417,10 @@ void Position_PID_Cntrl(position *sensor){
  * Current Target Function
  */
 
-void current_target(current *coil, position *disp_sensor){
+void current_target(current *coil, position *x_disp_sensor, position *y_disp_sensor){
     float temp;
     /* In the next line is where the future addition of the X Y influence will be accounted for */
-    temp = coil->bias + (disp_sensor->pid_out * disp_to_current); //*(Amps)
+    temp = coil->bias + disp_to_current * ((coil->x_influence * x_disp_sensor->pid_out) + (coil->y_influence * y_disp_sensor->pid_out)); //*(Amps)
     if(temp > current_max || temp < current_min){
         if(temp > current_max){
             temp = current_max;     //Limits the target current to the max value
@@ -378,6 +429,7 @@ void current_target(current *coil, position *disp_sensor){
             temp = current_min;     //Limits the target current to the min value
         }
     }
+    //Sets the target for the coil
     coil->target = temp; //*(Amps)
 }
 
@@ -396,10 +448,10 @@ void Bang_Bang_Cntrl(current *coil){
 
     //Run P_H pin high or low depending on error
     if(coil->error < 0){
-        GpioDataRegs.GPBSET.bit.GPIO39 = 1;     //Pin 88, This is Tied to the P_H pin for one of the Pololu's
+        GpioDataRegs.GPBSET.all |= 1 << coil->gpio_offset;     //This is Tied to the P_H pin for one of the Pololu's
     }
     else{
-        GpioDataRegs.GPBCLEAR.bit.GPIO39 = 1;   //Pin 88, This is Tied to the P_H pin for one of the Pololu's
+        GpioDataRegs.GPBCLEAR.all |= 1 << coil->gpio_offset;   //This is Tied to the P_H pin for one of the Pololu's
     }
     /*  Include when ready for PWM
     //Scales the current demand to a PWM duty cycle
@@ -462,19 +514,32 @@ void InitADCPart2(){
     AdcaRegs.ADCSOC0CTL.bit.TRIGSEL = 5;    //Set the Trigger for SOC0, 5=ePWM1
     AdcaRegs.ADCSOC0CTL.bit.CHSEL = 0;      //Set the channel for SOC0 to convert, 0=ADCAIN0
     AdcaRegs.ADCSOC0CTL.bit.ACQPS = 19;     //Set the sample window size for SOC0, 19=20 SysClkCycles
-    AdcaRegs.ADCINTSEL1N2.bit.INT1SEL = 0;  //Set EOCx to trigger ADCINT1, 0=EOC0
+    AdcaRegs.ADCSOC1CTL.bit.TRIGSEL = 5;    //Set the Trigger for SOC1, 5=ePWM1
+    AdcaRegs.ADCSOC1CTL.bit.CHSEL = 1;      //Set the channel for SOC1 to convert, 0=ADCAIN1
+    AdcaRegs.ADCSOC1CTL.bit.ACQPS = 19;     //Set the sample window size for SOC1, 19=20 SysClkCycles
+    AdcaRegs.ADCSOC2CTL.bit.TRIGSEL = 5;    //Set the Trigger for SOC2, 5=ePWM1
+    AdcaRegs.ADCSOC2CTL.bit.CHSEL = 2;      //Set the channel for SOC2 to convert, 0=ADCAIN2
+    AdcaRegs.ADCSOC2CTL.bit.ACQPS = 19;     //Set the sample window size for SOC2, 19=20 SysClkCycles
+    AdcaRegs.ADCSOC3CTL.bit.TRIGSEL = 5;    //Set the Trigger for SOC3, 5=ePWM1
+    AdcaRegs.ADCSOC3CTL.bit.CHSEL = 3;      //Set the channel for SOC3 to convert, 0=ADCAIN3
+    AdcaRegs.ADCSOC3CTL.bit.ACQPS = 19;     //Set the sample window size for SOC3, 19=20 SysClkCycles
+    AdcaRegs.ADCINTSEL1N2.bit.INT1SEL = 3;  //Set EOCx to trigger ADCINT1, 0=EOC0
     AdcaRegs.ADCINTSEL1N2.bit.INT1E = 1;    //Enable/Disable ADCINT1
     AdcaRegs.ADCINTSEL1N2.bit.INT1CONT = 0; //Enable/Disable Continuous Mode
     AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;  //Clears ADCINT1 Flag
 
     //Configuration Settings for ADCB
+    AdcbRegs.ADCSOC0CTL.bit.TRIGSEL = 8;    //Set the Trigger for SOC0, 8=ePWM2
+    AdcbRegs.ADCSOC0CTL.bit.CHSEL = 0;      //Set the channel for SOC0 to convert, 0=ADCBIN0
+    AdcbRegs.ADCSOC0CTL.bit.ACQPS = 19;     //Set the sample window size for SOC0, 19=20 SysClkCycles
     AdcbRegs.ADCSOC1CTL.bit.TRIGSEL = 8;    //Set the Trigger for SOC1, 8=ePWM2
-    AdcbRegs.ADCSOC1CTL.bit.CHSEL = 0;      //Set the channel for SOC1 to convert, 0=ADCBIN0
-    AdcbRegs.ADCSOC1CTL.bit.ACQPS = 19;     //Set the sample window size for SOC0, 19=20 SysClkCycles
+    AdcbRegs.ADCSOC1CTL.bit.CHSEL = 1;      //Set the channel for SOC1 to convert, 1=ADCBIN1
+    AdcbRegs.ADCSOC1CTL.bit.ACQPS = 19;     //Set the sample window size for SOC1, 19=20 SysClkCycles
     AdcbRegs.ADCINTSEL1N2.bit.INT2SEL = 1;  //Set EOCx to trigger ADCINT2, 1=EOC1
     AdcbRegs.ADCINTSEL1N2.bit.INT2E = 1;    //Enable/Disable ADCINT2
     AdcbRegs.ADCINTSEL1N2.bit.INT2CONT = 0; //Enable/Disable Continuous Mode
     AdcbRegs.ADCINTFLGCLR.bit.ADCINT2 = 1;  //Clears ADCINT2 Flag
+
 
     EDIS;
 }
@@ -609,11 +674,14 @@ void EPwmStart(){
 interrupt void adca1_isr(){
 
 
-    //Write the sample to the global variable
-    i1_sample = AdcaResultRegs.ADCRESULT0;      //Reads the result register of SOC0
+     //Write the sample to the global variable
+    c1_sample = AdcaResultRegs.ADCRESULT0;  //Reads the result register of SOC0
+    c2_sample = AdcaResultRegs.ADCRESULT1;  //Reads the result register of SOC1
+    c3_sample = AdcaResultRegs.ADCRESULT2;  //Reads the result register of SOC2
+    c4_sample = AdcaResultRegs.ADCRESULT3;  //Reads the result register of SOC3
 
     //Set the update flag
-    i1_update = 1;  //Triggers the if statement in the main loop for Current Control
+    c_update = 1;  //Triggers the if statement in the main loop for Current Control
 
     //Clear the interrupt flag
     AdcaRegs.ADCINTFLGCLR.bit.ADCINT1=1;    //Clears ADCA interrupt 1
@@ -628,7 +696,7 @@ interrupt void adca1_isr(){
 
 interrupt void adcb2_isr(){
     //Write the sample to the global variable
-    x1_sample = AdcbResultRegs.ADCRESULT1;  //Reads the result register of SOC1
+    x1_sample = AdcbResultRegs.ADCRESULT0;  //Reads the result register of SOC1
 
     //Set the update flag
     x1_update = 1;  //Triggers the if statement in the main loop for PID operations
