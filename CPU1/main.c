@@ -198,13 +198,13 @@ void main(void){
     GpioDataRegs.GPBCLEAR.bit.GPIO40 = 1;   //Sets the pin low
 
     //PWM_H Pins
-        //Pin 86, PWM_H for C3
+        //Pin 88, PWM_H for C3
     GpioCtrlRegs.GPBPUD.bit.GPIO39 = 0;     //Leaves the pull up resistor on the pin
     GpioDataRegs.GPBSET.bit.GPIO39 = 1;     //Sets the pin high
     GpioCtrlRegs.GPBGMUX1.bit.GPIO39 = 0;   //Sets the pin to default mux
     GpioCtrlRegs.GPBDIR.bit.GPIO39 = 1;     //Sets the pin to output
     GpioDataRegs.GPBCLEAR.bit.GPIO39 = 1;   //Sets the pin low
-        //Pin 88, PWM_H for C2
+        //Pin 86, PWM_H for C2
     GpioCtrlRegs.GPBGMUX1.bit.GPIO34 = 0;   //Sets the pin to default mux
     GpioCtrlRegs.GPBDIR.bit.GPIO34 = 1;     //Sets the pin to output
     GpioDataRegs.GPBCLEAR.bit.GPIO34 = 1;   //Sets the pin to low

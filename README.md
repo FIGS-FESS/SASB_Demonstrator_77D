@@ -13,11 +13,11 @@ Pinouts:
   	-> Pin 17 (ADCA CH3) For H-Bridge 4
   Displacement Sensor
   	-> Pin 12 (ADCB CH0)
-  PWM High ->
-  	Pin 86 (GPIO 34) For H-Bridge 1
-  	Pin 88 (GPIO 39) For H-Bridge 2
-  	Pin 90 (GPIO 44) For H-Bridge 3
-  	Pin 92 (GPIO 45) For H-Bridge 4
+  PWM High
+  	-> Pin 86 (GPIO 34) For H-Bridge 1
+  	-> Pin 88 (GPIO 39) For H-Bridge 2
+  	-> Pin 90 (GPIO 44) For H-Bridge 3
+  	-> Pin 92 (GPIO 45) For H-Bridge 4
   PWM Low and Dir should be pluged into one of the 3.3V pins on the board to keep them at 	logic high. This garentees that when the PWM High pin is toggled the 
 
 Reference Pins:
