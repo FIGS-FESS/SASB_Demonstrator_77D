@@ -21,8 +21,8 @@ Pinouts:
   PWM Low and Dir should be pluged into one of the 3.3V pins on the board to keep them at 	logic high. This garentees that when the PWM High pin is toggled the 
 
 Reference Pins:
-  ADCA Clock Signal -> Pin 49 (ePWM1 Compair A)
-  ADCB Clock Signal -> Pin 53 (ePWM2 Compair A)
+  ADCA Clock Signal -> Pin 49 (ePWM1 Compare A)
+  ADCB Clock Signal -> Pin 53 (ePWM2 Compare A)
   Length of Displacement calculations -> Pin 89
 
 Ussage:
